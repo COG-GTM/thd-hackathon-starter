@@ -22,6 +22,15 @@ If you don't have docker installed, install [docker desktop](https://www.docker.
 
 From there, clone the repository into your workspace of choice. 
 
+Next, create a `.env` file with credentials for the local MongoDB (never commit it):
+
+```
+cp .env.example .env
+```
+
+Then edit `.env` and pick your own `MONGO_INITDB_ROOT_USERNAME`/`MONGO_INITDB_ROOT_PASSWORD`. MongoDB runs with
+authentication enabled and is only reachable from the other containers on the compose network; it is not published to the host.
+
 Finally, make sure you are on public wifi and then run the following command from your favorite terminal: 
 
 ```
