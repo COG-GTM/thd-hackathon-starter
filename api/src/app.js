@@ -7,6 +7,7 @@ const compression = require('compression')
 const errorHandler = require('api-error-handler')
 const passport = require('passport')
 const LocalStrategy = require('passport-local').Strategy
+const { getSessionKeys } = require('./sessionKeys')
 
 const index = require('./routes')
 const auth = require('./routes/auth')
@@ -35,7 +36,7 @@ app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: false }))
 app.use(cookieParser())
 
-app.use(session({ keys: [process.env.cookieSigningKey || 'secretkey1'] }))
+app.use(session({ keys: getSessionKeys() }))
 
 app.use(passport.initialize())
 app.use(passport.session())
