@@ -16,14 +16,22 @@ const app = express()
 
 app.use(compression())
 
+const allowedOrigins = [
+  'https://wishhack.xyz',
+  'http://localhost:3000',
+  'http://localhost:3001',
+  ...(process.env.corsDomain || '').split(',')
+]
+  .map(o => o.trim())
+  .filter(Boolean)
+
 app.use(
   cors({
     origin: (reqOrigin, callback) => {
-      const whitelist = ['wishhack.xyz', 'localhost']
-      if (whitelist.filter(w => reqOrigin && reqOrigin.includes(w))) {
-        callback(null, true)
+      if (!reqOrigin || allowedOrigins.includes(reqOrigin)) {
+        callback(null, allowedOrigins.includes(reqOrigin))
       } else {
-        callback(new Error('Now Allowed by CORS'))
+        callback(new Error('Not allowed by CORS'))
       }
     },
     credentials: true
