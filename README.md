@@ -37,6 +37,20 @@ The frontend and backend will auto-refresh as you make changes, and the only tim
 is if you made changes to the package.json file in either ui or api.
  
 
+## Configuration
+
+The API signs session cookies with the `cookieSigningKey` environment variable. There is no
+built-in default: in production the API refuses to start without it, and in development a
+random per-process key is used (sessions are reset on restart). Generate one with:
+
+```
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Set it via `docker-compose` (`environment: - cookieSigningKey=...` on the `api` service) or as
+the `cookieSigningKey` build variable for `app.yaml`. To rotate keys, supply a comma-separated
+list with the newest key first.
+
 ## TODOs
 
 - Add captcha: https://github.com/appleboy/react-recaptcha
