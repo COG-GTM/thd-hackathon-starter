@@ -22,7 +22,7 @@ If you don't have docker installed, install [docker desktop](https://www.docker.
 
 From there, clone the repository into your workspace of choice. 
 
-Finally, make sure you are on public wifi and then run the following command from your favorite terminal: 
+Finally, run the following command from your favorite terminal: 
 
 ```
 docker-compose down && docker-compose build && docker-compose up
@@ -30,8 +30,18 @@ docker-compose down && docker-compose build && docker-compose up
 
 *NOTE*: The first build will be slow due to docker world-building
 
-This will host your front end on `localhost:3001`, your api endpoint on `localhost:3002`, and mongodb will be networked internally (more details TBD). You can connect a 
-remote debugger to `0.0.0.0:56745` in order to debug the api. 
+This will host your front end on `localhost:3001`, your api endpoint on `localhost:3002`, and mongodb will be networked internally (more details TBD).
+
+To debug the api, start the inspector on loopback inside the container and forward it over `docker exec` rather than
+publishing the port (the inspector allows arbitrary code execution to anyone who can reach it, so never bind it to
+`0.0.0.0` or expose it in `docker-compose.yml`):
+
+```
+docker-compose exec api node --inspect=127.0.0.1:9229 src/app.js
+```
+
+Then attach your debugger from inside the container (e.g. `docker-compose exec api node inspect 127.0.0.1:9229`), or
+forward the port over an SSH tunnel if you need to attach from another machine.
 
 The frontend and backend will auto-refresh as you make changes, and the only time you will ever need to re-run `docker-compose down && docker-compose build && docker-compose up` 
 is if you made changes to the package.json file in either ui or api.
