@@ -19,7 +19,7 @@ App migration wave. This file maps what the app runs on today and the target des
 | Package | Version | Break on Node 22 | Plan |
 |---|---|---|---|
 | `react-scripts` (ui) | 3.0.1 | Webpack 4 hashes with MD4; OpenSSL 3 rejects it: `yarn build` fails with `ERR_OSSL_EVP_UNSUPPORTED` (reproduced) | Upgrade to `react-scripts` 5 (webpack 5). No `--openssl-legacy-provider` |
-| `mongoose` (api) | 5.5.x (MongoDB driver 3.2) | None on Node 22; driver 3.x is end of life and logs deprecations (`ensureIndex`, `remove`). Tests pass against MongoDB 7.0 | Keep; flag for a later upgrade |
+| `mongoose` (api) | 5.5.x (MongoDB driver 3.2) | None on Node 22; driver 3.x is end of life and logs deprecations (`ensureIndex`, `remove`). Tests pass against MongoDB 7.0 | Upgraded within major 5 to `^5.13.23` (driver 3.7) to clear the driver warnings; a move to Mongoose 8 is a later change |
 | `jest` (api) | 24.x | None found; tests pass | Keep |
 | `nodemon` (api) | 1.19.1, listed under `dependencies` | Dev-only watcher pulled into the production install (old `chokidar`/`fsevents`) | Move to `devDependencies`; production image runs `node src/app.js` |
 
@@ -65,7 +65,7 @@ App migration wave. This file maps what the app runs on today and the target des
 
 ## Target design
 
-- **Compute moves**: one `linux/amd64` image built from a root multi-stage `Dockerfile` on Node 22 LTS. Stage 1 builds the UI (`react-scripts` 5); stage 2 installs API production dependencies; the runtime stage (`node:22-alpine`, non-root `USER node`) runs `node src/app.js` on port 8080 and serves the UI build from the same origin (`UI_BUILD_DIR`), so the bundle calls the API with relative URLs and there is no cross-origin cookie. `/healthz` (process up) and `/readyz` (MongoDB connected) back the probes.
+- **Compute moves**: one `linux/amd64` image built from a root multi-stage `Dockerfile` on Node 22 LTS. Stage 1 builds the UI (`react-scripts` 5); stage 2 installs API production dependencies; the runtime stage (`node:22-alpine`, non-root `USER node`) runs `node src/app.js` on port 8080 and serves the UI build from the same origin (`UI_BUILD_DIR`), so the bundle calls the API with relative URLs and there is no cross-origin cookie. `/healthz` (process up) and `/readyz` (MongoDB connected) back the probes. `helmet` sets security headers (default CSP, so the UI build emits its webpack runtime as a file: `INLINE_RUNTIME_CHUNK=false`).
 - **Data moves** (network zone `internet`: the platform cannot reach the old network): MongoDB moves to a platform-provisioned instance from a Crossplane claim; the app reads `mongoUrl` from the claim's connection secret. `scripts/migrate-data.sh` dumps the source with `mongodump` and restores with `mongorestore`, then compares per-collection counts. No bucket to move.
 - **Secrets**: `cookieSigningKey` and `mongoUrl` come from Kubernetes Secrets at runtime (references only in the infra repo); the `app.yaml` `sed` templating is no longer used by the platform path.
 - **Network path**: public ingress (HTTP 8080 behind the platform ingress) to the app; app to the platform MongoDB on 27017 inside the cluster network. No other egress needed.
