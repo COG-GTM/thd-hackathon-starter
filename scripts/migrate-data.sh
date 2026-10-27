@@ -7,7 +7,7 @@
 # Optional environment:
 #   DOCKER_NETWORK     docker network that can reach the source (default: host)
 #   TARGET_CONTAINER   name of the fresh target container (default: mongo-migration-target)
-#   TARGET_PORT        host port for the target container (default: 27018)
+#   TARGET_PORT        loopback port for the target when DOCKER_NETWORK=host (default: 27018)
 #   MONGO_IMAGE        MongoDB image providing mongod/mongodump/mongorestore (default: mongo:7.0)
 #
 # The app stores no files in object storage, so there is no bucket to mirror.
@@ -27,10 +27,10 @@ fi
 run_net=(--network "$DOCKER_NETWORK")
 if [ "$DOCKER_NETWORK" = host ]; then
   target_uri="mongodb://127.0.0.1:${TARGET_PORT}"
-  docker run -d --name "$TARGET_CONTAINER" -p "${TARGET_PORT}:27017" "$MONGO_IMAGE" >/dev/null
+  docker run -d --name "$TARGET_CONTAINER" -p "127.0.0.1:${TARGET_PORT}:27017" "$MONGO_IMAGE" >/dev/null
 else
   target_uri="mongodb://${TARGET_CONTAINER}:27017"
-  docker run -d --name "$TARGET_CONTAINER" "${run_net[@]}" -p "${TARGET_PORT}:27017" "$MONGO_IMAGE" >/dev/null
+  docker run -d --name "$TARGET_CONTAINER" "${run_net[@]}" "$MONGO_IMAGE" >/dev/null
 fi
 export TARGET_MONGO_URI="$target_uri"
 
@@ -38,25 +38,21 @@ mongo_tool() {
   docker run --rm -i "${run_net[@]}" -e SOURCE_MONGO_URI -e TARGET_MONGO_URI "$MONGO_IMAGE" "$@"
 }
 
-echo "waiting for target MongoDB"
-for _ in $(seq 1 30); do
-  if mongo_tool sh -c 'mongosh "$TARGET_MONGO_URI" --quiet --eval "db.adminCommand({ping: 1}).ok"' >/dev/null 2>&1; then
-    break
-  fi
-  sleep 2
-done
+# Connection strings never go on a command line: mongodump/mongorestore read them from a
+# private config file written with the shell builtin printf, mongosh from process.env.
+dump_cmd='umask 077; printf "uri: \"%s\"\n" "$SOURCE_MONGO_URI" > /tmp/uri.yaml; exec mongodump --config=/tmp/uri.yaml --archive --gzip --quiet'
+restore_cmd='umask 077; printf "uri: \"%s\"\n" "$TARGET_MONGO_URI" > /tmp/uri.yaml; exec mongorestore --config=/tmp/uri.yaml --archive --gzip --drop --quiet'
 
-echo "dumping source and restoring into $TARGET_CONTAINER"
-mongo_tool sh -c 'mongodump --uri="$SOURCE_MONGO_URI" --archive --gzip --quiet' \
-  | mongo_tool sh -c 'mongorestore --uri="$TARGET_MONGO_URI" --archive --gzip --drop --quiet'
+ping_script='const c = connect(process.env.TARGET_MONGO_URI); print(c.adminCommand({ ping: 1 }).ok)'
 
 count_script='
-const dbs = db.adminCommand({ listDatabases: 1 }).databases
+const conn = connect(process.env[URI_VAR]);
+const dbs = conn.adminCommand({ listDatabases: 1 }).databases
   .map(d => d.name)
   .filter(n => !["admin", "config", "local"].includes(n));
 const out = [];
 for (const name of dbs) {
-  const d = db.getSiblingDB(name);
+  const d = conn.getSiblingDB(name);
   for (const c of d.getCollectionNames().sort()) {
     out.push(name + "." + c + " " + d.getCollection(c).countDocuments({}));
   }
@@ -64,8 +60,19 @@ for (const name of dbs) {
 print(out.join("\n"));
 '
 
-source_counts=$(mongo_tool sh -c 'mongosh "$SOURCE_MONGO_URI" --quiet --eval "$0"' "$count_script" | sort)
-target_counts=$(mongo_tool sh -c 'mongosh "$TARGET_MONGO_URI" --quiet --eval "$0"' "$count_script" | sort)
+echo "waiting for target MongoDB"
+for _ in $(seq 1 30); do
+  if mongo_tool mongosh --nodb --quiet --eval "$ping_script" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+
+echo "dumping source and restoring into $TARGET_CONTAINER"
+mongo_tool sh -c "$dump_cmd" | mongo_tool sh -c "$restore_cmd"
+
+source_counts=$(mongo_tool mongosh --nodb --quiet --eval "const URI_VAR = 'SOURCE_MONGO_URI'; $count_script" | sort)
+target_counts=$(mongo_tool mongosh --nodb --quiet --eval "const URI_VAR = 'TARGET_MONGO_URI'; $count_script" | sort)
 
 printf '%-40s %10s %10s\n' collection source target
 join -a1 -a2 -e missing -o 0,1.2,2.2 <(echo "$source_counts") <(echo "$target_counts") \

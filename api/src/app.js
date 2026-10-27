@@ -68,8 +68,9 @@ app.use('/', index)
 app.use('/auth', auth)
 
 if (uiBuildDir) {
+  // Only browser navigations to UI routes get index.html; API clients sending */* still get a 404.
   app.get('*', (req, res, next) =>
-    req.accepts('html')
+    !req.path.startsWith('/auth') && req.accepts(['json', 'html']) === 'html'
       ? res.sendFile(path.join(uiBuildDir, 'index.html'))
       : next()
   )
