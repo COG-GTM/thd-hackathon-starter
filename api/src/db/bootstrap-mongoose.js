@@ -2,7 +2,11 @@ const mongoose = require('mongoose')
 
 const mongoDB = process.env.mongoUrl || 'mongodb://mongo/my_database'
 
-mongoose.connect(mongoDB, { useNewUrlParser: true })
+mongoose.connect(mongoDB, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  useCreateIndex: true
+})
 
 const db = mongoose.connection
 
