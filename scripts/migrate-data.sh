@@ -45,8 +45,16 @@ trap 'rm -rf "$cfg_dir"' EXIT
   printf '%s' "$target_uri" > "$cfg_dir/target.uri"
 )
 
+# The private mount is readable by the invoking host user. Rootful Docker: run the tools as
+# that uid. Rootless Docker: container root already maps to that user.
+if docker info --format '{{json .SecurityOptions}}' | grep -q rootless; then
+  tool_user=()
+else
+  tool_user=(--user "$(id -u):$(id -g)")
+fi
+
 mongo_tool() {
-  docker run --rm -i "${run_net[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$cfg_dir:/cfg:ro" "$MONGO_IMAGE" "$@"
+  docker run --rm -i "${run_net[@]}" "${tool_user[@]}" -e HOME=/tmp -v "$cfg_dir:/cfg:ro" "$MONGO_IMAGE" "$@"
 }
 
 ping_script='const c = connect(require("fs").readFileSync("/cfg/target.uri", "utf8")); print(c.adminCommand({ ping: 1 }).ok)'
