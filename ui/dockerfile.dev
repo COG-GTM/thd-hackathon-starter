@@ -1,12 +1,13 @@
-FROM node:alpine
+FROM node:22-alpine
 
 WORKDIR /ui
+RUN chown node:node /ui
+USER node
 
 ENV PATH /ui/node_modules/.bin:$PATH
 
-COPY package.json /ui/package.json
+COPY --chown=node:node package.json /ui/package.json
 
 RUN yarn install --silent
-RUN yarn add global react-scripts@3.0.1 --silent
 
 CMD ["yarn", "start"]

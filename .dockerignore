@@ -1,0 +1,12 @@
+.git
+.github
+**/node_modules
+**/coverage
+**/*.log
+**/*.bak
+ui/build
+api/dockerfile.dev
+ui/dockerfile.dev
+docker-compose*.yml
+gae.json
+.idea
