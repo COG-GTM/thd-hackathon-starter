@@ -32,21 +32,27 @@ else
   target_uri="mongodb://${TARGET_CONTAINER}:27017"
   docker run -d --name "$TARGET_CONTAINER" "${run_net[@]}" "$MONGO_IMAGE" >/dev/null
 fi
-export TARGET_MONGO_URI="$target_uri"
+# Connection strings never go on a command line or into a container's environment: they are
+# written (shell builtin printf) to a private temp dir that is mounted read-only into each
+# throwaway tool container and removed on exit.
+cfg_dir=$(umask 077 && mktemp -d)
+trap 'rm -rf "$cfg_dir"' EXIT
+(
+  umask 077
+  printf 'uri: "%s"\n' "$SOURCE_MONGO_URI" > "$cfg_dir/source.yaml"
+  printf 'uri: "%s"\n' "$target_uri" > "$cfg_dir/target.yaml"
+  printf '%s' "$SOURCE_MONGO_URI" > "$cfg_dir/source.uri"
+  printf '%s' "$target_uri" > "$cfg_dir/target.uri"
+)
 
 mongo_tool() {
-  docker run --rm -i "${run_net[@]}" -e SOURCE_MONGO_URI -e TARGET_MONGO_URI "$MONGO_IMAGE" "$@"
+  docker run --rm -i "${run_net[@]}" --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$cfg_dir:/cfg:ro" "$MONGO_IMAGE" "$@"
 }
 
-# Connection strings never go on a command line: mongodump/mongorestore read them from a
-# private config file written with the shell builtin printf, mongosh from process.env.
-dump_cmd='umask 077; printf "uri: \"%s\"\n" "$SOURCE_MONGO_URI" > /tmp/uri.yaml; exec mongodump --config=/tmp/uri.yaml --archive --gzip --quiet'
-restore_cmd='umask 077; printf "uri: \"%s\"\n" "$TARGET_MONGO_URI" > /tmp/uri.yaml; exec mongorestore --config=/tmp/uri.yaml --archive --gzip --drop --quiet'
-
-ping_script='const c = connect(process.env.TARGET_MONGO_URI); print(c.adminCommand({ ping: 1 }).ok)'
+ping_script='const c = connect(require("fs").readFileSync("/cfg/target.uri", "utf8")); print(c.adminCommand({ ping: 1 }).ok)'
 
 count_script='
-const conn = connect(process.env[URI_VAR]);
+const conn = connect(require("fs").readFileSync("/cfg/" + SIDE + ".uri", "utf8"));
 const dbs = conn.adminCommand({ listDatabases: 1 }).databases
   .map(d => d.name)
   .filter(n => !["admin", "config", "local"].includes(n));
@@ -69,10 +75,11 @@ for _ in $(seq 1 30); do
 done
 
 echo "dumping source and restoring into $TARGET_CONTAINER"
-mongo_tool sh -c "$dump_cmd" | mongo_tool sh -c "$restore_cmd"
+mongo_tool mongodump --config=/cfg/source.yaml --archive --gzip --quiet \
+  | mongo_tool mongorestore --config=/cfg/target.yaml --archive --gzip --drop --quiet
 
-source_counts=$(mongo_tool mongosh --nodb --quiet --eval "const URI_VAR = 'SOURCE_MONGO_URI'; $count_script" | sort)
-target_counts=$(mongo_tool mongosh --nodb --quiet --eval "const URI_VAR = 'TARGET_MONGO_URI'; $count_script" | sort)
+source_counts=$(mongo_tool mongosh --nodb --quiet --eval "const SIDE = 'source'; $count_script" | sort)
+target_counts=$(mongo_tool mongosh --nodb --quiet --eval "const SIDE = 'target'; $count_script" | sort)
 
 printf '%-40s %10s %10s\n' collection source target
 join -a1 -a2 -e missing -o 0,1.2,2.2 <(echo "$source_counts") <(echo "$target_counts") \
