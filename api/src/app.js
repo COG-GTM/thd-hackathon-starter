@@ -6,6 +6,7 @@ const cookieParser = require('cookie-parser')
 const session = require('cookie-session')
 const bodyParser = require('body-parser')
 const compression = require('compression')
+const helmet = require('helmet')
 const errorHandler = require('api-error-handler')
 const passport = require('passport')
 const LocalStrategy = require('passport-local').Strategy
@@ -21,6 +22,7 @@ app.get('/readyz', (req, res) =>
   res.sendStatus(mongoose.connection.readyState === 1 ? 200 : 503)
 )
 
+app.use(helmet())
 app.use(compression())
 
 app.use(

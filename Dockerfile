@@ -7,6 +7,8 @@ RUN yarn install --frozen-lockfile --network-timeout 600000
 COPY ui/ ./
 # Empty API base URL: the bundle calls the API on the same origin that serves it.
 ENV REACT_APP_expressDomain=""
+# Emit the webpack runtime as a file so the default helmet CSP (script-src 'self') allows it.
+ENV INLINE_RUNTIME_CHUNK=false
 RUN yarn build
 
 FROM node:22-alpine AS api-deps
