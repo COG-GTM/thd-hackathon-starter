@@ -18,6 +18,14 @@ describe('Sanity test express', () => {
   })
 })
 
+describe('health', () => {
+  it('reports liveness on /healthz', async () => {
+    const response = await request(app).get('/healthz')
+
+    expect(response.statusCode).toEqual(200)
+  })
+})
+
 describe('edgecases', () => {
   it("returns 404 on a route that doesn't exist", async () => {
     const response = await request(app).get('/banana')

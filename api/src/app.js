@@ -1,4 +1,6 @@
+const path = require('path')
 const express = require('express')
+const mongoose = require('mongoose')
 const logger = require('morgan')
 const cookieParser = require('cookie-parser')
 const session = require('cookie-session')
@@ -13,6 +15,11 @@ const auth = require('./routes/auth')
 const cors = require('cors')
 
 const app = express()
+
+app.get('/healthz', (req, res) => res.sendStatus(200))
+app.get('/readyz', (req, res) =>
+  res.sendStatus(mongoose.connection.readyState === 1 ? 200 : 503)
+)
 
 app.use(compression())
 
@@ -49,8 +56,22 @@ passport.deserializeUser(Account.deserializeUser())
 
 require('./db/bootstrap-mongoose')
 
+const uiBuildDir = process.env.UI_BUILD_DIR
+
+if (uiBuildDir) {
+  app.use(express.static(uiBuildDir))
+}
+
 app.use('/', index)
 app.use('/auth', auth)
+
+if (uiBuildDir) {
+  app.get('*', (req, res, next) =>
+    req.accepts('html')
+      ? res.sendFile(path.join(uiBuildDir, 'index.html'))
+      : next()
+  )
+}
 
 // catch 404 and forward to error handler
 app.use((req, res, next) => {
